@@ -23,7 +23,7 @@ Curve文件系统的重要特点之一就是适用于海量文件存储，那么
 首先介绍一下文件系统的几款通用测试工具。
 1. [pjdfstest](https://github.com/pjd/pjdfstest): posix兼容性测试。有3600+个回归测试用例，覆盖chmod, chown, link, mkdir, mkfifo, open, rename, rmdir, symlink, truncate, unlink等
 2. [mdtest](https://github.com/LLNL/mdtest): 元数据性能测试。对文件或者目录进行open/stat/close等操作，并返回报告
-3. [vdbench](https://github.com/LLNL/mdtest): 数据一致性测试。Vdbench是Oracle编写的一款应用广泛的存储性能测试工具，既支持块设备的性能测试，也支持文件系统性能测试，在做随机写的一致性测试很方便，能实时检查出哪一个扇区出现了数据不一致
+3. [vdbench](https://www.oracle.com/downloads/server-storage/vdbench-downloads.html): 数据一致性测试。Vdbench是Oracle编写的一款应用广泛的存储性能测试工具，既支持块设备的性能测试，也支持文件系统性能测试，在做随机写的一致性测试很方便，能实时检查出哪一个扇区出现了数据不一致
 4. [fio](https://github.com/axboe/fio): 数据性能测试。
 
 Curve文件系统从v2.3版本以后提供了单独压测元数据集群的方式（数据集群一般使用CurveBS和S3，所以直接对这些组件进行性能测试即可）。
