@@ -2,125 +2,49 @@
 
 ## 背景
 
-当前，Curve还是主要以Docker容器的方式部署在物理机上运行，需要CurveAdm[1]工具进行部署和集群管理。为了进一步地考虑云原生化，需要考虑将Curve集群部署在目前广泛使用的Kubernetes容器编排系统上，从而实现对Curve集群的自动部署以及自动化运维能力，提高产品对外的交付效率和交付水平。这里我们以CurveBS为例，介绍如何实现CurveBS在K8s上部署以及后续的Operator设计。
+当前，Curve还是主要以Docker容器的方式部署在物理机上运行，需要CurveAdm[1]工具进行部署和集群管理。为了进一步地云原生化，需要考虑将Curve集群部署在目前广泛使用的Kubernetes容器编排系统上。而且，Kubernetes 作为当前云原生的事实标准，我们也期望能够探索如何实现云和存储系统的深度结合，增强整个存储系统的稳定性和可伸缩性。
+
+我们将以 Operator 模式实现 Curve 在 Kubernetes 环境下的管理和运维，从而实现对Curve集群的自动部署以及自动化运维能力，提高产品交付效率和交付水平。
 
 ## Operator模式
+
+目前有状态应用在 Kubernetes 上主要通过 StatefulSet 进行管理，然而作为一个通用的有状态应用抽象，StatefulSet 并不能很好的适配一些复杂的有状态系统，并提供很好的运维体验。
+
+尤其是面对基于 multi-raft 的分布式存储系统，仅仅通过 Kubernetes 原生定义的一些资源和 helm 等部署工具的搭配已经无法满足需求。因此我们期望通过 Kubernetes 扩展的 Operator 模式增强整个存储系统的易用性和运维能力。
 
 Kubernetes operator[2]是一个应用级别的控制器用于扩展Kubernetes API以及对应的控制逻辑，使用自定义资源（CRD）允许用户自定义打包、部署以及管理应用。
 
 当Operator被部署到K8s集群中，会通过链接APIServer监听特定资源类型的事件，基于用户在CR中提供的配置以及在operator Reconcile中的处理逻辑采取对应的操作，确保资源的当前状态与期望状态相符合，也就是Kubernetes声明式API管理对象的实现。
 
-下图表示了整个Operator的工作流程：
+下图[3]表示了Controller的循环处理逻辑：
 
-![operator template](./image/0303-operator-template.png)
+![kubernetes operator](./image/0303-operator-template.png)
 
 ## 架构设计
 
-针对Curve特点以及各个组件之间的通信模式，同时参考rook-ceph[3]的设计，我们设计了如下的部署框架：
+针对Curve特点以及各个组件之间的通信模式，同时参考rook-ceph[4]的设计，我们设计了如下的部署框架：
 
-![curvebs operator architecture](./image/0303-curvebs-deployment-architecture.png)
+![Curve BS deployment architecture](./image/0303-curvebs-deployment-architecture.png)
 
 对于经典的三副本结构，我们会预先选择三个节点，在这三个节点分别部署Etcd、MDS和SnapShotClone这三个服务。同时，为集群有选择的根据用户自定义的磁盘数量自定义ChunkServer服务。在服务端部署完成之后，可以在上层部署已经实现的curve-csi/curvefs-csi存储驱动，从而可以让K8s中的资源使用Curve作为底层存储。Operator通常会使用Deployment的形式部署在集群中，负责控制整个CurveCluster CR的生命周期。
 
-## 实施细节
+详细的设计文档可以直接在项目仓库中查看：[CurveBS云原生部署设计](https://github.com/opencurve/curve-operator/pull/2/files)
 
-### API设计
+## 设计要点
 
-在上述架构的基础上，我们设计了如下的CurveCluster API用于抽象管理整个Curve集群。
+Curve Operator是Kubernetes上的Curve集群自动运维系统，我们规划Operator可以提供的能力包括部署、升级、扩缩容、配置变更等的Curve全生命周期管理。借助Curve Operator，Curve可以高效的运行在Kubernetes集群上。
 
-```go
-// CurveCluster is curve cluster representation
-type CurveCluster struct {
-    metav1.TypeMeta   `json:",inline"`
-    metav1.ObjectMeta `json:"metadata"`
-    Spec              ClusterSpec `json:"spec"`
-    Status ClusterStatus `json:"status,omitempty"`
-}
+集群部署是实现Operator的第一步，当前Curve的部署过程分为以下几个阶段：
 
-// ClusterSpec represents the specification of Curve Cluster
-type ClusterSpec struct {
-  // The version information of curve cluster
-  CurveVersion CurveVersionSpec `json:"curveVersion, omitempty"`
-  
-  // The IP of nodes that to deploy etcd and mds roles
-  Nodes []string `json:"nodes,omitempty"`
-  
-  // The path on the host where data stored for etcd and mds roles
-  DataDirHostPath string `json:"dataDirHostPath, omitempty"`
-  
-  // The path on the host where logs stored for etcd role and mds roles
-  LogDirHostPath string `json:"logDirHostPath, omitempty"`
-  
-  // A spec for etcd related options
-  Etcd EtcdSpec `json:"etcd, omitempty"`
-  
-  // A spec for mds related options
-  Mds MdsSpec `json:"mds, omitempty"`
-  
-  // A spec for available storage in the cluster and how it should be used
-  Storage StorageScopeSpec `json:"storage,omitempty"`
-  
-  // A spec for snapShotCloneServer related options 
-  SnapShot SnapShotSpec `json:"snapShot, omitempty"`
-}
-```
+* 磁盘格式化与创建chunkfilepool
+* 启动etcd server
+* 启动mds server
+* 创建物理池
+* 启动chunkserver
+* 创建逻辑池
+* 启动snapshotclone server
 
-在CurveCluster中定义了对Curve集群的全局配置，比如DataDirHostPath和LogDirHostPath分别表示各个组件在宿主机上的持久化路径。同时，在各个组件的Spec字段中指定详细的可配置参数。
-
-* Nodes：这里固定要部署的节点，对于三副本形式，这里需要知道集群中的三个节点IP（会在这三个节点上以DaemonSet形式部署etcd、mds以及snapshotclone server），同时要为这三个节点都预打上下面label，保证可以被调度到指定的节点。
-
-  ```shell
-  kubectl label node <node-name> curve-role=etcd
-  kubectl label node <node-name> curve-role=mds
-  kubectl label node <node-name> curve-role=snapshot
-  ```
-
-* CurveVersionSpec：定义所要部署的Curve镜像版本以及镜像拉取策略；
-
-* DataDirHostPath：定义各个组件在宿主机上的持久化数据目录，通过hostpath映射到容器内 `/curvebs/<role>/data`目录；
-
-* LogDirHostPath：定义各个组件在宿主机上的持久化日志目录，通过hostpath进行映射到容器内`/curvebs/<role>/logs`目录；
-
-* MdsSpec：mds server配置，定义端口以及其他可选配置参数；
-
-* EtcdSpec：etcd server配置，定义端口以及其他可选配置参数；
-
-* SnapShotServerSpec：SnapShotClone Server配置，定义是否启动、S3桶配置以及其他可选配置参数；
-
-* StorageScopeSpec：对于可获得的storage资源配置(ChunkServer)。用于定义集群中可获取的存储资源，主要抽象出两种方式：1. 使用集群的所有节点，但是所有节点都必须要配置指定规则的磁盘名和数量，然后再定义对磁盘的过滤规则。2. 自定义节点（useAllNodes指定为false），可以自定义每一个节点的上的磁盘配置（ChunkServer）。下面是一种可能的配置情况。
-
-  ```yaml
-  storage: # cluster level storage configuration and selection
-        # if 'useAllNodes' is set to true, K8s will list all nodes in cluster and used as chunkserver.
-        # if set to false, then will use 'nodes' spec setting
-      useAllNodes: false
-      nodes:
-        - server_host1
-        - server_host2
-        - server_host3
-      devices:
-        - name: "/dev/sda"
-          mountPath: "/data/chunkserver0"
-          percentage: 90
-  # Individual nodes and their config can be specified as selectedNodes once the selectedNodes object is not nil, but 'useAllNodes' above must be set to false.
-      # selectedNodes:
-      #   - name: "10.219.196.100"
-      #     devices: # specific devices to use for storage can be specified for each node
-      #       - name: "sdb"
-      #         mountPath: /data/chunkserver0
-      #         percentage: 90
-      #       - name: "sdc"
-      #         mountPath: /data/chunkserver1
-      #         percentage: 90
-      #   - name: "10.219.196.101"
-      #     devices: # specific devices to use for storage can be specified for each node
-      #       - name: "sdb"
-      #         mountPath: /data/chunkserver0
-      #         percentage: 80
-      #       - name: "sdc"
-      #         mountPath: /data/chunkserver1
-      #         percentage: 90
-  ```
+我们对以上Create集群的流程做了详细的设计。
 
 ### Etcd server
 
@@ -224,7 +148,7 @@ type SelectedNodes struct {
 
 根据用户配置，开启Job进行磁盘格式化任务，步骤包括1. Mkfs 2. Mount device ，上述步骤可以在Init Contianers进行，并且可以保证顺序操作。
 
-Pod中操作宿主机环境，需要设置Pod/Container的security context[4]，这样就无需额外的手动操作进行上面的步骤。下面是Pod可能的特权配置：
+Pod中操作宿主机环境，需要设置Pod/Container的security context[5]，这样就无需额外的手动操作进行上面的步骤。下面是Pod可能的特权配置：
 
 ```yaml
 securityContext:
@@ -372,7 +296,7 @@ spec:
 
 ## 总结
 
-以上是我们对于CurveBS云原生部署的考虑以及方案，在我们的Roadmap中Curve对接K8s进行部署只是Operator的第一步，后续的集群更新、集群版本升级以及自动化坏盘处理等工作都可以考虑使用Operator实现。目前curve-operator[5]项目还处于起步阶段，对该项目感兴趣以及想要致力于云原生方向的同学可以一起进群讨论和参与后续的开发工作。
+以上是我们对于CurveBS云原生部署的考虑以及方案，在我们的Roadmap中Curve对接K8s进行部署只是Operator的第一步，后续的集群更新、集群版本升级以及自动化坏盘处理等工作都可以考虑使用Operator实现。目前curve-operator[6]项目还处于起步阶段，对该项目感兴趣以及想要致力于云原生方向的同学可以一起进群讨论和参与后续的开发工作。
 
 ![0303-operator-wechat-qr.png](./image/0303-operator-wechat-qr.png)
 
@@ -382,8 +306,10 @@ spec:
 
 [2] https://kubernetes.io/docs/concepts/extend-kubernetes/operator/
 
-[3] https://github.com/rook/rook
+[3] https://pperzyna.com/blog/kubernetes-operators-explained/
 
-[4] https://kubernetes.io/docs/tasks/configure-pod-container/security-context
+[4] https://github.com/rook/rook
 
-[5] https://github.com/opencurve/curve-operator
+[5] https://kubernetes.io/docs/tasks/configure-pod-container/security-context
+
+[6] https://github.com/opencurve/curve-operator
