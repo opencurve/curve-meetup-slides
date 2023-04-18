@@ -47,8 +47,7 @@ spec:
   - curve-operator-node1
   - curve-operator-node2
   - curve-operator-node3
-  dataDirHostPath: /curvebs/data
-  logDirHostPath: /curvebs/log
+  hostDataDir: /curvebs
   etcd:
     port: 23880
     listenPort: 23890
@@ -139,7 +138,7 @@ csi-curve-plugin-vqpbz                          2/2     Running   0          4s
 
 ```shell
 kubectl apply -f example/storageclass.yaml
-kubectl apply -f example/pvc.yaml
+kubectl apply -f example/pvc-block.yaml
 ```
 
 可以使用`kubectl`工具查看pvc/pv是否处于bound状态：
@@ -159,10 +158,11 @@ pvc-119ca0e2-259f-4c29-8399-8899e1f7b96e   20Gi       RWO            Delete     
 ```
 
 可以看到pv和pvc创建成功，并已经成功绑定。
+
 3. 创建使用该pvc的pod
 
 ```shell
-kubectl apply -f example/pod.yaml
+kubectl apply -f example/pod-block.yaml
 
 NAME               READY   STATUS    RESTARTS   AGE
 csi-curve-test     1/1     Running   0          20s
