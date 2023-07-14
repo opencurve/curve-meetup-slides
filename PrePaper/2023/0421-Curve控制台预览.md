@@ -46,12 +46,17 @@ curve-manager 整体架构如下所示，主要由控制层和数据层组成，
 
 **集群部署**：该模块承担 Web 化部署的职责，接收用户的集群部署请求，并将该请求转发给 CurveAdm（增加了 service 层，可同时接收来自 CLI 和 HTTP 的请求）完成操作并返回结果。
 ## 项目进展
-目前控制台功能首先适配的是 CurveBS，功能开发已基本完成，通过内部的测试验证之后就会发布到 Curve 社区，感兴趣的小伙伴可以关注下。
+目前控制台功能首先适配的是 CurveBS，已经开源到github，仓库地址如下，感兴趣的小伙伴可以关注下。
+
+```bash
+前端仓库：https://github.com/opencurve/curve-dashboard
+后端仓库：https://github.com/opencurve/curve-manager
+```
 
 下面可以简单通过几张图来预览下 Curve 控制台：
 
 Curve 控制台登录页
-![0421-curve-manager-login.jpg](image/0421-curve-manager-login.jpg)
+![0421-curve-manager-login.jpg](image/0421-curve-manager-login.png)
 
 Curve 控制台概览页
-![0421-curve-manager-overview.jpg](image/0421-curve-manager-overview.jpg)
+![0421-curve-manager-overview.jpg](image/0421-curve-manager-overview.png)
