@@ -1,3 +1,9 @@
+
+## 本目录已废弃
+
+- 请移步Curve文档网站：[双周会](https://docs.opencurve.io/category/%E5%8F%8C%E5%91%A8%E4%BC%9A)
+
+
 ## Curve 双周会
 
 **内容**
