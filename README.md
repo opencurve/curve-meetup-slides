@@ -1,3 +1,8 @@
+
+> **本仓库已归档，请访问 [Curve文档官网](https://docs.opencurve.io/) 查看最新文档**
+
+---
+
 # Curve Meetup 幻灯片仓库
 
 本仓库用于归档Curve Meetup的幻灯片。
